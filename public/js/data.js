@@ -1,0 +1,140 @@
+// Модель данных календарика и слияние версий с разных устройств.
+
+export const DAY_MS = 86_400_000;
+
+export const uid = () =>
+  Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+const pad = (n) => String(n).padStart(2, '0');
+
+// На сервере дни считаются в часовом поясе телефона, а не сервера.
+let zoneFormat = null;
+export const setTimeZone = (tz) => {
+  try {
+    zoneFormat = tz ? new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }) : null;
+  } catch {
+    zoneFormat = null;
+  }
+};
+
+export const dayKey = (d = new Date()) => {
+  const x = d instanceof Date ? d : new Date(d);
+  if (zoneFormat) return zoneFormat.format(x);
+  return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+};
+export const parseDay = (key) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+export const addDays = (key, n) => {
+  const d = parseDay(key);
+  d.setDate(d.getDate() + n);
+  return dayKey(d);
+};
+// Разница в календарных днях; округление спасает от перехода на летнее время.
+export const diffDays = (a, b) => Math.round((parseDay(b) - parseDay(a)) / DAY_MS);
+/** День недели 1..7, понедельник = 1. */
+export const weekday = (key) => parseDay(key).getDay() || 7;
+/** Понедельник недели, в которой лежит день. */
+export const weekStart = (key) => addDays(key, 1 - weekday(key));
+
+export const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+export const MONTHS_NOM = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+export const WEEKDAYS = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+export const WD_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+
+export const dateLabel = (key, withWeekday = false) => {
+  const d = parseDay(key);
+  const base = `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  return withWeekday ? `${base}, ${WEEKDAYS[d.getDay()]}` : base;
+};
+export const dayTitle = (key) => {
+  const today = dayKey();
+  if (key === today) return 'Сегодня';
+  if (key === addDays(today, 1)) return 'Завтра';
+  if (key === addDays(today, -1)) return 'Вчера';
+  return dateLabel(key, true);
+};
+export const plural = (n, one, few, many) => {
+  const a = Math.abs(n) % 100;
+  const b = a % 10;
+  if (a > 10 && a < 20) return many;
+  if (b > 1 && b < 5) return few;
+  if (b === 1) return one;
+  return many;
+};
+
+export const PALETTE = [
+  '#EC407A', '#F48FB1', '#AB47BC', '#7E57C2', '#5C6BC0', '#42A5F5', '#26C6DA', '#26A69A',
+  '#66BB6A', '#9CCC65', '#FFCA28', '#FFA726', '#FF7043', '#EF5350', '#8D6E63', '#90A4AE',
+];
+
+export const EMOJIS = [
+  '📚', '📖', '📝', '✏️', '🖊️', '📐', '📏', '🧮', '🔢', '➗', '🧪', '⚗️', '🔬', '🧬', '🧫', '🦠',
+  '🌍', '🗺️', '🏛️', '📜', '⚖️', '💼', '📊', '📈', '💻', '⌨️', '🖥️', '🤖', '🎨', '🎭', '🎵', '🎹',
+  '🗣️', '🇬🇧', '🇰🇿', '🇷🇺', '🧠', '💊', '🩺', '⚽', '🏃‍♀️', '🧘‍♀️', '🎓', '🏫', '📅', '⏰', '⭐', '❤️',
+  '🌸', '✨', '🎉', '🛒', '☕', '🍰', '🎬', '✈️', '🏠', '🐷', '💅', '🎁', '🧹', '❓',
+];
+
+/** Списки документа, которые сливаются по id. */
+export const COLLECTIONS = ['subjects', 'lessons', 'overrides', 'items'];
+
+export const newDoc = () => ({
+  v: 1,
+  settings: {
+    theme: 'auto',
+    tz: null,
+    week: { mode: 'single', anchor: null }, // anchor — понедельник нечётной недели
+    breaks: [], // [{ id, from, to, name }] — дни без пар
+    notify: { on: false, classBefore: 10, morning: '08:00', evening: '21:00' },
+    updatedAt: 0,
+  },
+  subjects: [],
+  lessons: [],
+  overrides: [],
+  items: [],
+});
+
+export const live = (list) => list.filter((x) => !x.deleted);
+
+// ---- Слияние: для каждой записи побеждает более свежая правка ----
+
+function mergeById(a = [], b = []) {
+  const map = new Map();
+  for (const item of a) map.set(item.id, item);
+  for (const item of b) {
+    const cur = map.get(item.id);
+    if (!cur || (item.updatedAt || 0) >= (cur.updatedAt || 0)) map.set(item.id, item);
+  }
+  return [...map.values()];
+}
+
+const newer = (a, b) => ((b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a);
+
+export function mergeDocs(local, remote) {
+  if (!remote) return local;
+  if (!local) return remote;
+  const out = { v: 1, settings: newer(local.settings, remote.settings) };
+  for (const key of COLLECTIONS) out[key] = mergeById(local[key], remote[key]);
+  return out;
+}
+
+/** Приводит импортированный или старый документ к текущей форме. */
+export function normalizeDoc(doc) {
+  const base = newDoc();
+  if (!doc || typeof doc !== 'object') return base;
+  const s = doc.settings || {};
+  const out = {
+    ...base,
+    ...doc,
+    settings: {
+      ...base.settings,
+      ...s,
+      week: { ...base.settings.week, ...(s.week || {}) },
+      notify: { ...base.settings.notify, ...(s.notify || {}) },
+      breaks: Array.isArray(s.breaks) ? s.breaks : [],
+    },
+  };
+  for (const key of COLLECTIONS) out[key] = Array.isArray(doc[key]) ? doc[key] : [];
+  return out;
+}

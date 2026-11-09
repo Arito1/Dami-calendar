@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Календарик</title>
+  <meta name="description" content="Календарик Dami — пары, домашки и планы">
+  <meta name="theme-color" content="#FFF4F8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Календарик">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <script>
+    // Тема ставится до отрисовки, чтобы не мигало.
+    try {
+      const a = JSON.parse(localStorage.getItem('damical.auth'));
+      const d = a && JSON.parse(localStorage.getItem('damical.doc.' + a.username));
+      const t = d && d.doc && d.doc.settings && d.doc.settings.theme;
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="sheet-root"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
