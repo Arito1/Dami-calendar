@@ -913,7 +913,7 @@ function itemFieldsHtml() {
       `<button type="button" class="chip" data-act="it-remind" data-v="${v}" aria-pressed="${(s.remind == null ? '' : String(s.remind)) === v}">${l}</button>`).join('')}</div>
       <p class="hint-line" id="it-remind-hint">${esc(remindHint(s))}</p></div>` : ''}
     ${s.more ? `
-      ${s.date ? `<div class="field"><label>Повторять</label>${seg('it-repeat', s.repeat || '', [['', 'Нет'], ['day', 'Каждый день'], ['week', 'Неделя'], ['month', 'Месяц']])}</div>` : ''}
+      ${s.date ? `<div class="field"><label>Повторять</label>${seg('it-repeat', s.repeat || '', [['', 'Нет'], ['day', 'День'], ['week', 'Неделя'], ['month', 'Месяц']])}</div>` : ''}
       <div class="field"><label>Важность</label>${seg('it-prio', String(s.priority), [['0', 'Обычно'], ['1', '! Важно'], ['2', '!! Срочно']])}</div>
       <div class="field"><label>Подзадачи</label><div class="subtasks">
         ${s.subtasks.map((x, i) => `<div class="subtask"><button type="button" class="check small" data-act="sub-toggle" data-i="${i}" aria-pressed="${!!x.done}"></button>
