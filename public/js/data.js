@@ -97,6 +97,111 @@ export const newDoc = () => ({
 
 export const live = (list) => list.filter((x) => !x.deleted);
 
+// ---- Время ----
+
+/** '09:05' → минуты от полуночи. */
+export const toMin = (t) => {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + (m || 0);
+};
+export const fromMin = (m) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
+/** Минуты от полуночи сейчас (в часовом поясе устройства). */
+export const nowMin = (d = new Date()) => d.getHours() * 60 + d.getMinutes();
+export const durLabel = (min) => {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (!h) return `${m} мин`;
+  return m ? `${h} ч ${m} мин` : `${h} ч`;
+};
+
+// ---- Предметы и расписание ----
+
+export const KINDS = { lecture: 'Лекция', practice: 'Практика', lab: 'Лаба', other: '' };
+
+export const subjects = (doc) => live(doc.subjects).filter((s) => !s.archived).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+export const findSubject = (doc, id) => doc.subjects.find((s) => s.id === id) || null;
+export const NO_SUBJECT = { id: null, name: 'Без предмета', emoji: '📌', color: '#90A4AE' };
+
+/** 'odd' | 'even' | null (если недели не чередуются). Неделя с anchor — нечётная. */
+export function weekParity(doc, key) {
+  const w = doc.settings.week;
+  if (w.mode !== 'alternating' || !w.anchor) return null;
+  const weeks = Math.round(diffDays(weekStart(w.anchor), weekStart(key)) / 7);
+  return Math.abs(weeks) % 2 === 0 ? 'odd' : 'even';
+}
+export const PARITY_LABEL = { odd: 'нечётная неделя', even: 'чётная неделя' };
+
+export const breakOn = (doc, key) =>
+  doc.settings.breaks.find((b) => !b.deleted && b.from <= key && key <= (b.to || b.from)) || null;
+
+/** Переопределение пары на конкретный день (отмена, другое время, перенос). */
+export const overrideId = (lessonId, date) => `${lessonId}@${date}`;
+const overrideFor = (doc, lessonId, date) =>
+  doc.overrides.find((o) => !o.deleted && o.lessonId === lessonId && o.date === date) || null;
+
+function lessonFits(doc, l, key) {
+  if (l.weekday !== weekday(key)) return false;
+  const p = weekParity(doc, key);
+  return !p || !l.weeks || l.weeks === 'all' || l.weeks === p;
+}
+
+/**
+ * Пары на день: с учётом чётности недели, каникул, отмен и переносов.
+ * Возвращает [{ lesson, subject, date, start, end, room, cancelled, movedTo, movedFrom }].
+ */
+export function lessonsOn(doc, key) {
+  const out = [];
+  const onBreak = breakOn(doc, key);
+  const lessons = live(doc.lessons);
+  if (!onBreak) {
+    for (const l of lessons) {
+      if (!lessonFits(doc, l, key)) continue;
+      const o = overrideFor(doc, l.id, key);
+      const moved = o?.toDate && o.toDate !== key;
+      out.push({
+        lesson: l,
+        date: key,
+        start: (!moved && o?.start) || l.start,
+        end: (!moved && o?.end) || l.end,
+        room: (!moved && o?.room) || l.room || '',
+        cancelled: !!(o?.cancelled || moved),
+        movedTo: moved ? o.toDate : null,
+        changed: !!(o && !moved && !o.cancelled && (o.start || o.end || o.room)),
+      });
+    }
+  }
+  // Пары, перенесённые на этот день с других дней.
+  for (const o of doc.overrides) {
+    if (o.deleted || o.toDate !== key || o.date === key || o.cancelled) continue;
+    const l = lessons.find((x) => x.id === o.lessonId);
+    if (!l) continue;
+    out.push({ lesson: l, date: key, start: o.start || l.start, end: o.end || l.end, room: o.room || l.room || '', cancelled: false, movedFrom: o.date });
+  }
+  for (const x of out) x.subject = findSubject(doc, x.lesson.subjectId) || NO_SUBJECT;
+  return out.sort((a, b) => toMin(a.start) - toMin(b.start));
+}
+
+/** Ближайший день после `from`, когда у предмета есть пара. */
+export function nextLessonDate(doc, subjectId, from = dayKey()) {
+  if (!subjectId) return null;
+  for (let i = 1; i <= 70; i++) {
+    const key = addDays(from, i);
+    if (lessonsOn(doc, key).some((x) => !x.cancelled && x.lesson.subjectId === subjectId)) return key;
+  }
+  return null;
+}
+
+/** Время пар, которое уже встречается в расписании, — для быстрых кнопок. */
+export function usedSlots(doc) {
+  const map = new Map();
+  for (const l of live(doc.lessons)) {
+    const k = `${l.start}–${l.end}`;
+    map.set(k, (map.get(k) || 0) + 1);
+  }
+  return [...map.keys()].sort();
+}
+
 // ---- Слияние: для каждой записи побеждает более свежая правка ----
 
 function mergeById(a = [], b = []) {

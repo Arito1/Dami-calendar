@@ -288,3 +288,84 @@ body:has(.overlay) #toast { bottom: auto; top: calc(14px + env(safe-area-inset-t
 
 /* ---------- Календарик ---------- */
 .date-line { margin: 0 4px 12px; font-weight: 800; color: var(--muted); }
+
+/* Полоска недели */
+.week-strip { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 8px 8px 10px; margin-bottom: 12px; touch-action: pan-y; }
+.ws-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 6px; font-weight: 900; }
+.ws-head .icon-btn { width: 34px; height: 34px; border-radius: 12px; font-size: 20px; }
+.ws-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.ws-day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 5px; border-radius: 16px; min-width: 0; }
+.ws-day small { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; }
+.ws-day b { font-size: 18px; font-weight: 900; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; }
+.ws-day.today b { color: var(--pink-strong); box-shadow: inset 0 0 0 2px var(--pink); }
+.ws-day.on { background: var(--pink-soft); }
+.ws-day.on b { background: var(--pink); color: var(--on-pink); box-shadow: none; }
+.dots { display: flex; gap: 3px; height: 6px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+
+.day-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 4px 10px; font-size: 17px; }
+.day-line b { font-weight: 900; }
+.parity { font-size: 12px; font-weight: 800; padding: 5px 10px; border-radius: 99px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.parity.odd { background: color-mix(in srgb, #7E57C2 18%, var(--surface)); color: #7E57C2; }
+.parity.even { background: color-mix(in srgb, #26A69A 18%, var(--surface)); color: #1E8C82; }
+.back-today { margin: 0 0 10px 4px; background: var(--surface); box-shadow: var(--shadow-sm); color: var(--pink-strong); }
+
+.cta b { font-size: 18px; font-weight: 900; }
+.cta p { margin: 6px 0 14px; color: var(--muted); font-weight: 600; }
+
+/* Лента пар */
+.timeline { display: flex; flex-direction: column; gap: 8px; }
+.lesson {
+  display: flex; gap: 12px; width: 100%; text-align: left; position: relative; overflow: hidden;
+  background: var(--surface); border-radius: 20px; padding: 12px 14px 12px 18px; box-shadow: var(--shadow-sm);
+}
+.lesson::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--c); }
+.lesson:active { transform: scale(.985); }
+.l-time { display: flex; flex-direction: column; min-width: 46px; font-variant-numeric: tabular-nums; }
+.l-time b { font-weight: 900; }
+.l-time small { color: var(--muted); font-weight: 700; font-size: 13px; }
+.l-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.l-name { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.l-meta { font-size: 13px; color: var(--muted); font-weight: 700; }
+.l-meta:empty { display: none; }
+.l-status { font-size: 13px; font-weight: 900; color: var(--pink-strong); }
+.lesson.now { background: color-mix(in srgb, var(--c) 14%, var(--surface)); box-shadow: 0 0 0 2px var(--c), var(--shadow-sm); }
+.lesson.past { opacity: .55; }
+.lesson.cancelled { opacity: .6; }
+.lesson.cancelled .l-name, .lesson.cancelled .l-time { text-decoration: line-through; }
+.tag { align-self: flex-start; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; background: var(--surface-2); color: var(--muted); margin-top: 2px; }
+.warn-tag { background: var(--danger-soft); color: var(--danger); }
+.progress { display: block; height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin-top: 4px; }
+.progress i { display: block; height: 100%; border-radius: 99px; background: var(--c, var(--pink)); }
+.gap { align-self: center; font-size: 12px; font-weight: 800; color: var(--faint); padding: 0 10px; }
+.gap::before, .gap::after { content: '·'; margin: 0 6px; }
+.add-row { padding: 12px; border-radius: 18px; border: 2px dashed var(--line); font-weight: 800; color: var(--muted); }
+.add-row:active { background: var(--surface-2); }
+
+/* Предметы */
+.set-row .ico { width: 40px; height: 40px; border-radius: 13px; font-size: 21px; }
+.plus-ico { --c: var(--pink); color: var(--pink-strong); font-weight: 900; }
+.set-row.add .t { color: var(--pink-strong); }
+.set-row.col { flex-direction: column; align-items: stretch; gap: 8px; }
+.set-row.col .seg { margin: 0; }
+.subj-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.subj-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 99px; max-width: 100%;
+  font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--c) 20%, var(--surface)); box-shadow: var(--shadow-sm);
+}
+.subj-chip[aria-pressed="true"] { background: var(--c); color: #fff; }
+.subj-chip.add { --c: var(--surface-2); background: var(--surface); color: var(--pink-strong); border: 2px dashed var(--pink-soft); box-shadow: none; }
+.preview .subj-chip { font-size: 17px; padding: 10px 18px; }
+
+/* Шторки */
+.sheet-head { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sheet-head h3 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-btn.ghost { background: none; }
+.time-pair { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+.time-pair span { font-weight: 900; color: var(--muted); }
+.time-pair .input { min-width: 0; padding: 0 10px; }
+.state-pill { text-align: center; font-weight: 800; padding: 10px; border-radius: 16px; margin-bottom: 14px; background: var(--green-soft); color: var(--green-strong); }
+.state-pill.cancelled, .state-pill.moved { background: var(--danger-soft); color: var(--danger); }
+.state-pill.changed { background: var(--pink-soft); color: var(--pink-strong); }
+.seg button { min-width: 0; }
