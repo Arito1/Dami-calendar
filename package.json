@@ -6,10 +6,13 @@
   "description": "Календарик Dami — пары, домашки и планы",
   "scripts": {
     "dev": "node dev-server.mjs",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "vapid": "node scripts/vapid.mjs",
+    "test": "node scripts/test-parse.mjs && node scripts/test-reminders.mjs"
   },
   "dependencies": {
-    "@netlify/blobs": "^11.1.7"
+    "@netlify/blobs": "^11.1.7",
+    "web-push": "^4.0.0"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2"

@@ -1,10 +1,11 @@
 // Логика API, не зависящая от хостинга. Хранилище передаётся снаружи:
 // на Netlify это Netlify Blobs, локально — JSON-файл.
 //
-// store: { get(key) -> object|null, set(key, object), del(key) }
+// store: { get(key) -> object|null, set(key, object), del(key), list(prefix) -> string[] }
 
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
+import { sendPush, vapidFrom } from './push.mjs';
 
 const scrypt = promisify(scryptCb);
 const MAX_DOC_BYTES = 2_000_000;
@@ -92,8 +93,56 @@ export async function handleApi(req, store, env = {}) {
       return json(200, { token, username });
     }
 
+    // Публичный ключ для подписки на уведомления.
+    if (route === '/push/key' && method === 'GET') {
+      const vapid = vapidFrom(env);
+      if (!vapid) return err(503, 'push_off', 'Уведомления на сервере не настроены');
+      return json(200, { key: vapid.publicKey });
+    }
+
     const auth = await authUser(req, store);
     if (!auth) return err(401, 'unauthorized', 'Нужно войти заново');
+
+    if (route.startsWith('/push/') && method === 'POST') {
+      const vapid = vapidFrom(env);
+      if (!vapid) return err(503, 'push_off', 'Уведомления на сервере не настроены');
+      const body = await readBody(req);
+      const key = `push/${auth.username}`;
+      const rec = (await store.get(key)) || { subs: [] };
+      const sub = body.subscription;
+
+      if (route === '/push/subscribe') {
+        if (!sub?.endpoint || !/^https:\/\//.test(sub.endpoint) || !sub.keys?.p256dh || !sub.keys?.auth) {
+          return err(400, 'bad_sub', 'Неверная подписка');
+        }
+        const clean = { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, createdAt: Date.now() };
+        // Одно устройство — одна подписка; не больше 10 устройств.
+        rec.subs = [clean, ...rec.subs.filter((s) => s.endpoint !== sub.endpoint)].slice(0, 10);
+        await store.set(key, rec);
+        return json(200, { ok: true, devices: rec.subs.length });
+      }
+
+      if (route === '/push/unsubscribe') {
+        rec.subs = rec.subs.filter((s) => s.endpoint !== body.endpoint);
+        if (rec.subs.length) await store.set(key, rec);
+        else await store.del(key);
+        return json(200, { ok: true, devices: rec.subs.length });
+      }
+
+      if (route === '/push/test') {
+        if (!rec.subs.length) return err(400, 'no_subs', 'Сначала включи уведомления на этом телефоне');
+        const payload = { title: 'Календарик 🐷', body: 'Уведомления работают! Напомню о парах и делах вовремя', tag: 'test', url: '/' };
+        let sent = 0;
+        for (const s of rec.subs) {
+          const res = await sendPush(vapid, s, payload);
+          if (res.ok) sent++;
+          if (res.gone) rec.subs = rec.subs.filter((x) => x.endpoint !== s.endpoint);
+        }
+        await store.set(key, rec);
+        if (!sent) return err(502, 'push_failed', 'Не получилось отправить — включи уведомления заново');
+        return json(200, { ok: true, sent });
+      }
+    }
 
     if (route === '/logout' && method === 'POST') {
       await store.del(`sessions/${auth.token}`);

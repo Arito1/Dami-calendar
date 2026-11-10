@@ -2,6 +2,7 @@ import * as D from './data.js';
 import { state, onChange, loadLocal, authenticate, logout, pull, update, replaceDoc, startAutoSync } from './sync.js';
 import { pigSvg, PIG_PINK } from './pig.js';
 import { parseQuick } from './parse.js';
+import { pushSupport, deviceSubscribed, enablePush, disablePush, testPush } from './push.js';
 
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet-root');
@@ -19,6 +20,8 @@ const ui = {
   day: D.dayKey(), // выбранный день на вкладке «Сегодня»
   study: 'schedule', // schedule | subjects | exams
   inboxOpen: false,
+  pushDevice: null, // подписан ли этот телефон на уведомления (узнаём асинхронно)
+  pushBusy: false,
   cal: { month: D.dayKey().slice(0, 7), view: 'month', sel: D.dayKey() },
 };
 
@@ -523,7 +526,52 @@ function studyHtml() {
     ${views[ui.study]()}`;
 }
 
+function notifyHtml() {
+  const n = doc().settings.notify;
+  const sup = pushSupport();
+  if (sup === 'ios-home') {
+    return `<div class="set-group"><div class="set-row col"><span class="t">🔔 Уведомления
+      <small>На iPhone напоминания приходят, только если открыть Календарик с экрана «Домой»:</small></span>
+      <ol class="steps"><li>В Safari нажми «Поделиться» <b>⬆︎</b></li><li>«На экран „Домой“»</li><li>Открой Календарик с иконки и включи уведомления здесь</li></ol></div></div>`;
+  }
+  if (sup === 'no') {
+    return '<div class="set-group"><div class="set-row"><span class="t">🔔 Уведомления<small>Этот браузер не умеет присылать уведомления</small></span></div></div>';
+  }
+  const on = n.on && ui.pushDevice !== false;
+  const time = (key, label, hint) => `<label class="set-row"><span class="t">${label}<small>${hint}</small></span>
+    <input class="input time-in" type="time" data-notify="${key}" value="${esc(n[key] || '')}">
+    ${n[key] ? `<button type="button" class="icon-btn" data-act="notify-clear" data-v="${key}" aria-label="Выключить">✕</button>` : ''}</label>`;
+  return `<div class="set-group">
+    <button class="set-row" data-act="notify-toggle" ${ui.pushBusy ? 'disabled' : ''}>
+      <span class="t">🔔 Напоминания<small>${ui.pushBusy ? 'Минутку…' : on ? 'Приходят на этот телефон' : 'Пары, дедлайны, утро и вечер'}</small></span>
+      <span class="switch" role="switch" aria-checked="${on}"></span>
+    </button>
+    ${n.on && ui.pushDevice === false ? '<button class="set-row" data-act="notify-toggle"><span class="t warn">На этом устройстве не включены<small>Нажми, чтобы включить и здесь</small></span><span class="chev">›</span></button>' : ''}
+    ${on ? `
+      <div class="set-row col"><span class="t">Перед парой</span>
+        <div class="chips">${[[0, 'Не надо'], [5, 'За 5 мин'], [10, 'За 10'], [15, 'За 15'], [30, 'За 30']].map(([v, l]) =>
+          `<button class="chip" data-act="notify-before" data-v="${v}" aria-pressed="${Number(n.classBefore) === v}">${l}</button>`).join('')}</div></div>
+      ${time('morning', 'Утренняя сводка', n.morning ? 'Пары и дела на день' : 'Выключена')}
+      ${time('evening', 'Вечером — что завтра', n.evening ? 'Что сдать и во сколько первая пара' : 'Выключено')}
+      <button class="set-row" data-act="notify-test"><span class="t">Прислать проверочное</span><span class="chev">›</span></button>` : ''}
+  </div>`;
+}
+
+/** Узнаём, подписано ли это устройство, и перерисовываем настройки, если поменялось. */
+async function checkPushDevice() {
+  const v = await deviceSubscribed().catch(() => false);
+  if (v !== ui.pushDevice) {
+    ui.pushDevice = v;
+    if (ui.tab === 'settings' && !ui.sheet) render();
+  }
+}
+
+function setNotify(fields) {
+  update((d) => { Object.assign(d.settings.notify, fields); d.settings.updatedAt = now(); });
+}
+
 function settingsHtml() {
+  checkPushDevice();
   const s = doc().settings;
   const alt = s.week.mode === 'alternating';
   const parity = D.weekParity(doc(), D.dayKey());
@@ -539,9 +587,10 @@ function settingsHtml() {
       <button class="set-row" data-act="breaks"><span class="t">Каникулы и сессия<small>В эти дни пары не показываются</small></span>
         <span class="v">${breaks.length || ''}</span><span class="chev">›</span></button>
     </div>
+    ${notifyHtml()}
     <div class="set-group">
       <div class="set-row"><span class="t">Тема</span></div>
-      <div style="padding:0 12px 4px">${seg('theme', s.theme, [['auto', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']])}</div>
+      <div style="padding:0 12px 4px">${seg('theme', s.theme, [['auto', 'Авто'], ['light', 'Светлая'], ['dark', 'Тёмная']])}</div>
     </div>
     <div class="set-group">
       <button class="set-row" data-act="export"><span class="t">Скачать мои данные<small>Файл JSON со всеми записями</small></span><span class="chev">›</span></button>
@@ -1195,6 +1244,36 @@ const actions = {
       d.settings.updatedAt = now();
     });
   },
+  'notify-toggle': async () => {
+    if (ui.pushBusy) return;
+    const n = doc().settings.notify;
+    const turnOn = !(n.on && ui.pushDevice);
+    ui.pushBusy = true;
+    // enablePush() сразу спрашивает разрешение — пока длится нажатие (так требует iPhone).
+    const job = turnOn ? enablePush() : disablePush();
+    render();
+    try {
+      await job;
+      ui.pushDevice = turnOn;
+      setNotify({ on: turnOn });
+      toast(turnOn ? 'Уведомления включены 🔔' : 'Уведомления выключены');
+    } catch (e) {
+      toast(e.message || 'Не получилось');
+    } finally {
+      ui.pushBusy = false;
+      render();
+    }
+  },
+  'notify-before': (el) => setNotify({ classBefore: Number(el.dataset.v) }),
+  'notify-clear': (el) => setNotify({ [el.dataset.v]: '' }),
+  'notify-test': async () => {
+    try {
+      await testPush();
+      toast('Отправлено! Должно прийти через пару секунд');
+    } catch (e) {
+      toast(e.message);
+    }
+  },
   breaks: () => openSheet({ kind: 'breaks' }),
   'break-delete': (el) => {
     update((d) => {
@@ -1331,6 +1410,7 @@ document.addEventListener('touchend', (e) => {
 
 document.addEventListener('change', (e) => {
   if (e.target.id === 'import-file' && e.target.files[0]) importData(e.target.files[0]);
+  else if (e.target.dataset.notify) setNotify({ [e.target.dataset.notify]: e.target.value || '' });
 });
 
 document.addEventListener('keydown', (e) => {

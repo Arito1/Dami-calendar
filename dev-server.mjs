@@ -4,7 +4,9 @@ import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
+import * as webpush from 'web-push';
 import { handleApi } from './server/core.mjs';
+import { runReminders, vapidFrom } from './server/push.mjs';
 
 const PORT = Number(process.env.PORT) || 8889;
 const ROOT = join(import.meta.dirname, 'public');
@@ -32,7 +34,32 @@ const store = {
   get: async (key) => db[key] ?? null,
   set: async (key, value) => { db[key] = value; await persist(); },
   del: async (key) => { delete db[key]; await persist(); },
+  list: async (prefix) => Object.keys(db).filter((k) => k.startsWith(prefix)),
 };
+
+// Локально ключи для push создаются сами и лежат в data/vapid.json.
+const VAPID_FILE = join(import.meta.dirname, 'data', 'vapid.json');
+let vapidKeys = { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY };
+if (!vapidKeys.publicKey) {
+  if (existsSync(VAPID_FILE)) vapidKeys = JSON.parse(await readFile(VAPID_FILE, 'utf8'));
+  else {
+    vapidKeys = webpush.generateVAPIDKeys();
+    await mkdir(join(import.meta.dirname, 'data'), { recursive: true });
+    await writeFile(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
+  }
+}
+const env = {
+  REGISTRATION_CODE: process.env.REGISTRATION_CODE,
+  VAPID_PUBLIC_KEY: vapidKeys.publicKey,
+  VAPID_PRIVATE_KEY: vapidKeys.privateKey,
+  VAPID_SUBJECT: process.env.VAPID_SUBJECT || 'mailto:dev@localhost.test',
+};
+
+// Как scheduled function на Netlify, только раз в минуту.
+setInterval(async () => {
+  const sent = await runReminders(store, vapidFrom(env)).catch((e) => console.error(e));
+  if (sent) console.log(`Напоминаний отправлено: ${sent}`);
+}, 60_000);
 
 createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -45,7 +72,7 @@ createServer(async (req, res) => {
       headers: req.headers,
       body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks),
     });
-    const response = await handleApi(request, store, { REGISTRATION_CODE: process.env.REGISTRATION_CODE });
+    const response = await handleApi(request, store, env);
     res.writeHead(response.status, Object.fromEntries(response.headers));
     res.end(Buffer.from(await response.arrayBuffer()));
     return;

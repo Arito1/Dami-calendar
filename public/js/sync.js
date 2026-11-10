@@ -25,7 +25,7 @@ const listeners = new Set();
 export const onChange = (fn) => listeners.add(fn);
 const emit = (what) => listeners.forEach((fn) => fn(what));
 
-async function api(path, { method = 'GET', body } = {}) {
+export async function api(path, { method = 'GET', body } = {}) {
   const headers = { 'content-type': 'application/json' };
   if (state.auth?.token) headers.authorization = `Bearer ${state.auth.token}`;
   const res = await fetch(`/api${path}`, { method, headers, body: body && JSON.stringify(body) });

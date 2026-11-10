@@ -10,6 +10,7 @@ const SHELL = [
   '/js/sync.js',
   '/js/pig.js',
   '/js/parse.js',
+  '/js/push.js',
   '/icons/favicon.svg',
   '/icons/icon-192.png',
   '/icons/apple-touch-icon.png',
@@ -50,4 +51,29 @@ self.addEventListener('fetch', (event) => {
       return cached || fresh;
     }),
   );
+});
+
+// ---- Push-уведомления ----
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data?.text() }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'Календарик', {
+    body: data.body || '',
+    tag: data.tag,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    data: { url: data.url || '/' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/';
+  event.waitUntil((async () => {
+    const all = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const open = all.find((c) => new URL(c.url).origin === location.origin);
+    if (open) return open.focus();
+    return clients.openWindow(url);
+  })());
 });
