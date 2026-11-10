@@ -26,15 +26,22 @@ export const parseDay = (key) => {
   const [y, m, d] = key.split('-').map(Number);
   return new Date(y, m - 1, d);
 };
-export const addDays = (key, n) => {
-  const d = parseDay(key);
-  d.setDate(d.getDate() + n);
-  return dayKey(d);
+// Календарная арифметика через UTC: не зависит от часового пояса устройства или сервера.
+const utcOf = (key) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
 };
-// Разница в календарных днях; округление спасает от перехода на летнее время.
-export const diffDays = (a, b) => Math.round((parseDay(b) - parseDay(a)) / DAY_MS);
+const keyOfUtc = (ms) => new Date(ms).toISOString().slice(0, 10);
+export const addDays = (key, n) => keyOfUtc(utcOf(key) + n * DAY_MS);
+export const diffDays = (a, b) => Math.round((utcOf(b) - utcOf(a)) / DAY_MS);
 /** День недели 1..7, понедельник = 1. */
-export const weekday = (key) => parseDay(key).getDay() || 7;
+export const weekday = (key) => new Date(utcOf(key)).getUTCDay() || 7;
+/** Тот же день через n месяцев (31-е → последний день короткого месяца). */
+export const addMonths = (key, n) => {
+  const [y, m, d] = key.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate();
+  return keyOfUtc(Date.UTC(y, m - 1 + n, Math.min(d, last)));
+};
 /** Понедельник недели, в которой лежит день. */
 export const weekStart = (key) => addDays(key, 1 - weekday(key));
 
@@ -242,4 +249,191 @@ export function normalizeDoc(doc) {
   };
   for (const key of COLLECTIONS) out[key] = Array.isArray(doc[key]) ? doc[key] : [];
   return out;
+}
+
+// ---- Дела: домашки, задачи, события, экзамены ----
+
+export const ITEM_KINDS = {
+  homework: { label: 'Домашка', emoji: '📚' },
+  task: { label: 'Дело', emoji: '✅' },
+  event: { label: 'Событие', emoji: '🎉' },
+  exam: { label: 'Экзамен', emoji: '🎓' },
+};
+export const REPEAT_LABEL = { day: 'каждый день', week: 'каждую неделю', month: 'каждый месяц' };
+export const REMIND_OPTIONS = [['', 'Нет'], ['0', 'В срок'], ['15', 'За 15 мин'], ['60', 'За час'], ['1440', 'За день']];
+/** Время, от которого считается напоминание, если у дела нет своего времени. */
+export const DEFAULT_REMIND_TIME = '09:00';
+
+/** Случается ли дело (в том числе повторяющееся) в этот день. */
+export function occursOn(item, key) {
+  if (!item.date) return false;
+  if (!item.repeat) return item.date === key;
+  if (key < item.date || (item.repeat.until && key > item.repeat.until)) return false;
+  const f = item.repeat.freq;
+  if (f === 'day') return true;
+  if (f === 'week') return weekday(key) === weekday(item.date);
+  if (f === 'month') {
+    const months = (Number(key.slice(0, 4)) - Number(item.date.slice(0, 4))) * 12 + Number(key.slice(5, 7)) - Number(item.date.slice(5, 7));
+    return addMonths(item.date, months) === key;
+  }
+  return false;
+}
+
+export const isDone = (item, key = item.date) => (item.repeat ? (item.doneDates || []).includes(key) : !!item.done);
+
+const byTime = (a, b) =>
+  (toMin(a.time) ?? 9999) - (toMin(b.time) ?? 9999) || (b.priority || 0) - (a.priority || 0) || (a.createdAt || 0) - (b.createdAt || 0);
+
+/** Дела на день (включая повторы). */
+export const itemsOn = (doc, key) => live(doc.items).filter((i) => occursOn(i, key)).sort(byTime);
+
+/** Входящие: без даты и не сделаны. */
+export const inbox = (doc) =>
+  live(doc.items).filter((i) => !i.date && !i.done)
+    .sort((a, b) => (b.priority || 0) - (a.priority || 0) || (b.createdAt || 0) - (a.createdAt || 0));
+
+/**
+ * «Горит»: просроченные несделанные дела и дедлайны на ближайшие дни.
+ * Повторяющиеся и события сюда не попадают — они и так на ленте дня. Экзамены — отдельным отсчётом.
+ */
+export function hotList(doc, today = dayKey(), days = 3) {
+  const limit = addDays(today, days);
+  return live(doc.items)
+    .filter((i) => i.date && !i.repeat && !i.done && i.kind !== 'event' && i.date <= limit && !(i.kind === 'exam' && i.date >= today))
+    .sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
+}
+
+/** Ближайшие экзамены. */
+export const upcomingExams = (doc, today = dayKey(), days = 400) =>
+  live(doc.items)
+    .filter((i) => i.kind === 'exam' && i.date && !i.done && i.date >= today && diffDays(today, i.date) <= days)
+    .sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
+
+/** Сколько дел закрыто на этой неделе. */
+export function doneThisWeek(doc, today = dayKey()) {
+  const from = weekStart(today);
+  let n = 0;
+  for (const i of live(doc.items)) {
+    if (i.repeat) n += (i.doneDates || []).filter((k) => k >= from && k <= today).length;
+    else if (i.done && i.doneAt && dayKey(i.doneAt) >= from) n++;
+  }
+  return n;
+}
+
+/** «через 2 дня», «завтра», «просрочено на 3 дня». */
+export function dueLabel(key, today = dayKey()) {
+  const n = diffDays(today, key);
+  if (n === 0) return 'сегодня';
+  if (n === 1) return 'завтра';
+  if (n === 2) return 'послезавтра';
+  if (n < 0) return `просрочено на ${-n} ${plural(-n, 'день', 'дня', 'дней')}`;
+  return `через ${n} ${plural(n, 'день', 'дня', 'дней')}`;
+}
+
+export const shortDate = (key) => {
+  const d = parseDay(key);
+  return `${WD_SHORT[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`;
+};
+
+// ---- Напоминания (считаются одинаково на сервере и в браузере) ----
+
+/** Смещение часового пояса в минутах в момент ms. */
+function tzOffsetMin(ms, tz) {
+  if (!tz) return -new Date(ms).getTimezoneOffset();
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).formatToParts(new Date(ms)).map((p) => [p.type, p.value]),
+  );
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute);
+  return Math.round((asUtc - Math.floor(ms / 60000) * 60000) / 60000);
+}
+
+/** Момент времени (ms) для местных даты и времени в поясе tz. */
+export function zonedTime(key, hhmm, tz) {
+  const guess = utcOf(key) + toMin(hhmm) * 60000;
+  const off = tzOffsetMin(guess, tz);
+  const ms = guess - off * 60000;
+  const off2 = tzOffsetMin(ms, tz); // поправка на переход летнего времени
+  return off2 === off ? ms : guess - off2 * 60000;
+}
+
+/** Момент напоминания дела в конкретный день или null. */
+export function itemRemindAt(item, key, tz) {
+  if (item.remind == null || item.remind === '' || !key) return null;
+  return zonedTime(key, item.time || DEFAULT_REMIND_TIME, tz) - Number(item.remind) * 60000;
+}
+
+/**
+ * Все напоминания с моментом в (fromMs, toMs]. Ключ уникален — по нему сервер не шлёт дубли.
+ * Возвращает [{ key, at, title, body, tag }].
+ */
+export function remindersBetween(doc, fromMs, toMs, tz = doc.settings.tz) {
+  const n = doc.settings.notify;
+  if (!n?.on) return [];
+  const out = [];
+  const add = (r) => { if (r.at > fromMs && r.at <= toMs) out.push(r); };
+  // Дни в поясе пользователя, которые могут дать напоминание в окне (с запасом на «за день»).
+  setTimeZone(tz);
+  const firstDay = dayKey(new Date(fromMs));
+  const lastDay = dayKey(new Date(toMs));
+  setTimeZone(null);
+  for (let key = addDays(firstDay, -1); key <= addDays(lastDay, 1); key = addDays(key, 1)) {
+    const lessons = lessonsOn(doc, key).filter((x) => !x.cancelled);
+    if (Number(n.classBefore) > 0) {
+      for (const x of lessons) {
+        add({
+          key: `l:${x.lesson.id}:${key}`,
+          at: zonedTime(key, x.start, tz) - n.classBefore * 60000,
+          title: `${x.subject.emoji} ${x.subject.name} в ${x.start}`,
+          body: [`Через ${n.classBefore} мин`, KINDS[x.lesson.kind], x.room && `ауд. ${x.room}`].filter(Boolean).join(' · '),
+          tag: `lesson-${x.lesson.id}`,
+        });
+      }
+    }
+    const dayItems = itemsOn(doc, key);
+    // Дела со своим напоминанием.
+    for (const i of dayItems) {
+      if (isDone(i, key)) continue;
+      const at = itemRemindAt(i, key, tz);
+      if (at == null) continue;
+      const subj = i.subjectId ? findSubject(doc, i.subjectId) : null;
+      const r = Number(i.remind);
+      const when = r >= 1440 ? `Завтра${i.time ? ` в ${i.time}` : ''}` : i.time ? `В ${i.time}` : 'Сегодня';
+      add({
+        key: `i:${i.id}:${key}:${r}`,
+        at,
+        title: `${subj?.emoji || ITEM_KINDS[i.kind]?.emoji || '🔔'} ${i.title}`,
+        body: [when, subj?.name, ITEM_KINDS[i.kind]?.label].filter(Boolean).join(' · '),
+        tag: `item-${i.id}`,
+      });
+    }
+    const todo = dayItems.filter((i) => !isDone(i, key) && i.kind !== 'event');
+    const overdue = live(doc.items).filter((i) => i.date && !i.repeat && !i.done && i.kind !== 'event' && i.date < key);
+    // Утренняя сводка.
+    if (n.morning && (lessons.length || todo.length || overdue.length)) {
+      const parts = [];
+      if (lessons.length) parts.push(`${lessons.length} ${plural(lessons.length, 'пара', 'пары', 'пар')} с ${lessons[0].start}`);
+      if (todo.length) parts.push(`дел: ${todo.length}`);
+      if (overdue.length) parts.push(`просрочено: ${overdue.length}`);
+      add({
+        key: `m:${key}`,
+        at: zonedTime(key, n.morning, tz),
+        title: 'Доброе утро ☀️',
+        body: `Сегодня ${parts.join(', ')}${todo.length ? `. ${todo.slice(0, 3).map((i) => i.title).join(', ')}` : ''}`,
+        tag: 'digest',
+      });
+    }
+    // Вечером — что завтра.
+    const tomorrow = addDays(key, 1);
+    const tLessons = lessonsOn(doc, tomorrow).filter((x) => !x.cancelled);
+    const tTodo = itemsOn(doc, tomorrow).filter((i) => !isDone(i, tomorrow));
+    if (n.evening && (tTodo.length || tLessons.length)) {
+      const parts = [];
+      if (tTodo.length) parts.push(`${tTodo.slice(0, 3).map((i) => i.title).join(', ')}${tTodo.length > 3 ? '…' : ''}`);
+      if (tLessons.length) parts.push(`первая пара в ${tLessons[0].start}`);
+      add({ key: `e:${key}`, at: zonedTime(key, n.evening, tz), title: 'На завтра 🌙', body: parts.join(' · '), tag: 'digest' });
+    }
+  }
+  return out.sort((a, b) => a.at - b.at);
 }

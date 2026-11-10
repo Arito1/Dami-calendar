@@ -1,5 +1,5 @@
 // Офлайн-режим: оболочка приложения берётся из кэша, API всегда идёт в сеть.
-const CACHE = 'damical-v1';
+const CACHE = 'damical-v2';
 const SHELL = [
   '/',
   '/index.html',
@@ -9,6 +9,7 @@ const SHELL = [
   '/js/data.js',
   '/js/sync.js',
   '/js/pig.js',
+  '/js/parse.js',
   '/icons/favicon.svg',
   '/icons/icon-192.png',
   '/icons/apple-touch-icon.png',
