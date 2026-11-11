@@ -12,6 +12,9 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const buzz = () => navigator.vibrate?.(8);
 const doc = () => state.doc;
 const now = () => Date.now();
+// Ноутбук и компьютер: широкий экран — боковое меню и две колонки (размеры — в styles.css, тот же порог).
+const wideMq = matchMedia('(min-width: 960px)');
+const wide = () => wideMq.matches;
 
 const ui = {
   tab: 'today',
@@ -94,10 +97,13 @@ function renderMain() {
     </header>
     <main class="page ${ui.tab}">${pages[ui.tab]()}</main>
     ${ui.tab === 'today' || ui.tab === 'calendar' ? '<button class="fab" data-act="item-new" aria-label="Добавить">+</button>' : ''}
-    <nav class="nav">${Object.keys(pages).map((t) => `
+    <nav class="nav">
+      <div class="nav-brand">${pigSvg('', PIG_PINK, { pencil: false })}<span>Календарик</span></div>
+      ${Object.keys(pages).map((t) => `
       <button data-act="tab" data-v="${t}" ${ui.tab === t ? 'aria-current="page"' : ''}>
         <span class="pill">${icon(t)}</span>${TABS[t].nav}
       </button>`).join('')}
+      <button class="nav-add" data-act="item-new">+ Добавить</button>
     </nav>`;
 }
 
@@ -326,14 +332,28 @@ function todayHtml() {
     </div>
     ${!isToday ? '<button class="chip back-today" data-act="day" data-v="today">← К сегодня</button>' : ''}`;
 
-  if (isToday) {
-    html += examChipsHtml();
+  // Экзамены, «Горит» и входящие: на телефоне — только на сегодня и в общей ленте,
+  // на широком экране — всегда, отдельной колонкой справа.
+  const side = wide() || isToday;
+  let top = '';
+  let bottom = '';
+  if (side) {
+    top += examChipsHtml();
     const hot = D.hotList(d, today).filter((i) => i.date !== today);
     if (hot.length) {
-      html += `<div class="section-title"><h2>🔥 Горит</h2><span>${hot.length}</span></div>
+      top += `<div class="section-title"><h2>🔥 Горит</h2><span>${hot.length}</span></div>
         <div class="items">${hot.map((i) => itemRowHtml(i)).join('')}</div>`;
     }
+    const inbox = D.inbox(d);
+    if (inbox.length) {
+      bottom += `<button class="section-title fold" data-act="inbox-toggle" aria-expanded="${ui.inboxOpen}">
+          <h2>📥 Входящие</h2><span>${inbox.length} без даты ${ui.inboxOpen ? '▴' : '▾'}</span></button>
+        ${ui.inboxOpen ? `<div class="items">${inbox.map((i) => itemRowHtml(i)).join('')}</div>` : ''}`;
+    }
+    const n = D.doneThisWeek(d, today);
+    if (n) bottom += `<p class="week-done">За эту неделю закрыто: <b>${n}</b> ${n >= 10 ? '🏆' : n >= 5 ? '🔥' : '✨'}</p>`;
   }
+  if (!wide()) html += top;
 
   if (br && !lessons.length) html += `<div class="break-note">🏖 ${esc(br.name || 'Каникулы')} до ${esc(D.dateLabel(br.to || br.from))}</div>`;
 
@@ -360,17 +380,11 @@ function todayHtml() {
       : emptyHtml(isToday ? 'На сегодня ничего — можно отдыхать 🎉' : 'Ничего не запланировано');
   }
 
-  if (isToday) {
-    const inbox = D.inbox(d);
-    if (inbox.length) {
-      html += `<button class="section-title fold" data-act="inbox-toggle" aria-expanded="${ui.inboxOpen}">
-          <h2>📥 Входящие</h2><span>${inbox.length} без даты ${ui.inboxOpen ? '▴' : '▾'}</span></button>
-        ${ui.inboxOpen ? `<div class="items">${inbox.map((i) => itemRowHtml(i)).join('')}</div>` : ''}`;
-    }
-    const n = D.doneThisWeek(d, today);
-    if (n) html += `<p class="week-done">За эту неделю закрыто: <b>${n}</b> ${n >= 10 ? '🏆' : n >= 5 ? '🔥' : '✨'}</p>`;
-  }
-  return html;
+  if (!wide()) return html + bottom;
+  return `<div class="cols">
+    <div class="col-main">${html}</div>
+    <aside class="col-side">${top + bottom || '<div class="side-calm">🔥 Ничего не горит<small>Просроченного и срочных дедлайнов нет</small></div>'}</aside>
+  </div>`;
 }
 
 // ----- Календарь -----
@@ -407,9 +421,13 @@ function monthGridHtml() {
           exam && 'exam',
           D.breakOn(d, key) && 'break',
         ].filter(Boolean).join(' ');
+        const color = (i) => D.findSubject(d, i.subjectId)?.color || (i.kind === 'event' ? '#AB47BC' : i.kind === 'exam' ? '#EF5350' : '#EC407A');
+        // На широком экране в клетке видны сами дела, а не только точки.
+        const titles = wide() && items.length ? `<span class="m-items">${items.slice(0, 3).map((i) =>
+          `<i style="--c:${esc(color(i))}">${i.time ? `${i.time} ` : ''}${esc(i.title)}</i>`).join('')}${items.length > 3 ? `<small>ещё ${items.length - 3}</small>` : ''}</span>` : '';
         return `<button class="m-day ${cls}" data-act="cal-day" data-v="${key}">
           <b>${D.parseDay(key).getDate()}</b>
-          <span class="dots">${colors.map((c) => `<i style="--c:${esc(c)}"></i>`).join('')}</span>
+          ${titles || `<span class="dots">${colors.map((c) => `<i style="--c:${esc(c)}"></i>`).join('')}</span>`}
           ${lessons ? `<span class="m-lessons" style="--n:${Math.min(lessons, 5)}"></span>` : ''}
         </button>`;
       }).join('')}
@@ -454,8 +472,13 @@ function agendaHtml() {
 }
 
 function calendarHtml() {
-  return `${seg('cal-view', ui.cal.view, [['month', 'Месяц'], ['list', 'Список на 3 недели']])}
-    ${ui.cal.view === 'month' ? `${monthGridHtml()}${dayDetailHtml(ui.cal.sel)}` : agendaHtml()}`;
+  const views = seg('cal-view', ui.cal.view, [['month', 'Месяц'], ['list', 'Список на 3 недели']]);
+  if (ui.cal.view !== 'month') return `${views}<div class="agenda">${agendaHtml()}</div>`;
+  if (!wide()) return `${views}${monthGridHtml()}${dayDetailHtml(ui.cal.sel)}`;
+  return `${views}<div class="cols cal">
+    <div class="col-main">${monthGridHtml()}</div>
+    <aside class="col-side">${dayDetailHtml(ui.cal.sel)}</aside>
+  </div>`;
 }
 
 // ----- Учёба: расписание и предметы -----
@@ -478,13 +501,14 @@ function scheduleHtml() {
   const lessons = D.live(doc().lessons);
   const days = [1, 2, 3, 4, 5, 6];
   if (lessons.some((l) => l.weekday === 7)) days.push(7);
-  return days.map((wd) => {
+  // На широком экране дни недели стоят колонками.
+  return `<div class="sched">${days.map((wd) => {
     const list = lessons.filter((l) => l.weekday === wd).sort((a, b) => D.toMin(a.start) - D.toMin(b.start));
-    return `<div class="section-title"><h2>${WD_FULL[wd]}</h2><span>${list.length ? `${list.length} ${D.plural(list.length, 'пара', 'пары', 'пар')}` : ''}</span></div>
+    return `<div class="sched-day"><div class="section-title"><h2>${WD_FULL[wd]}</h2><span>${list.length ? `${list.length} ${D.plural(list.length, 'пара', 'пары', 'пар')}` : ''}</span></div>
       <div class="timeline">${list.map(templateRowHtml).join('')}
         <button class="add-row" data-act="lesson-new" data-wd="${wd}">+ Пара</button>
-      </div>`;
-  }).join('');
+      </div></div>`;
+  }).join('')}</div>`;
 }
 
 function subjectsHtml() {
@@ -1296,6 +1320,11 @@ const actions = {
 };
 
 document.addEventListener('click', (e) => {
+  // На ноутбуке клик по невидимому полю даты в чипе сам календарь не открывает — открываем явно.
+  if (e.target.matches('.date-chip input[type="date"]')) {
+    try { e.target.showPicker(); } catch { /* старый браузер — остаётся обычное поле */ }
+    return;
+  }
   if (e.target.matches('.overlay')) return closeSheet();
   if (e.target.closest('[data-swiped]')) return;
   const el = e.target.closest('[data-act]');
@@ -1435,6 +1464,8 @@ onChange((what) => {
 });
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+// Окно растянули или сузили через порог — перестраиваем раскладку.
+wideMq.addEventListener('change', () => { if (state.auth) render(); });
 
 // Раз в минуту обновляем «идёт / через 20 мин»; в полночь переходим на новый день.
 let lastDay = D.dayKey();

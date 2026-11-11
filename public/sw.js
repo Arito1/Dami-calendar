@@ -1,5 +1,5 @@
 // Офлайн-режим: оболочка приложения берётся из кэша, API всегда идёт в сеть.
-const CACHE = 'damical-v2';
+const CACHE = 'damical-v3';
 const SHELL = [
   '/',
   '/index.html',

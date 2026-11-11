@@ -489,3 +489,106 @@ body:has(.overlay) #toast { bottom: auto; top: calc(14px + env(safe-area-inset-t
 .steps { margin: 4px 0 0; padding-left: 22px; font-weight: 700; }
 .steps li { margin-bottom: 4px; }
 .set-row:disabled { opacity: .6; }
+
+/* ---------- Широкий экран: ноутбук и компьютер ---------- */
+/* Порог тот же, что wideMq в app.js. На телефоне этих элементов не видно. */
+.nav-brand, .nav .nav-add, .m-items, .side-calm { display: none; }
+
+@media (min-width: 960px) {
+  #app { max-width: none; margin: 0; padding-left: 240px; }
+
+  /* Боковое меню вместо нижней панели */
+  .nav {
+    left: 0; top: 0; bottom: 0; transform: none; width: 240px; height: auto;
+    padding: 22px 14px; display: flex; flex-direction: column; gap: 4px;
+    border-top: 0; border-right: 1px solid var(--line);
+  }
+  .nav-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 20px; font-size: 21px; font-weight: 900; color: var(--pink-strong); letter-spacing: -0.3px; }
+  .nav-brand svg { width: 42px; height: 42px; flex: none; }
+  .nav button { flex-direction: row; justify-content: flex-start; gap: 12px; padding: 11px 12px; font-size: 15px; color: var(--muted); border-radius: 14px; }
+  .nav button svg { width: 22px; height: 22px; }
+  .nav .pill, .nav button[aria-current="page"] .pill { padding: 0; background: none; }
+  .nav button[aria-current="page"] { background: var(--pink-soft); color: var(--pink-strong); }
+  .nav button:not([aria-current]):hover { background: var(--surface-2); color: var(--text); }
+  .nav .nav-add {
+    display: flex; justify-content: center; margin-top: 16px; height: 48px;
+    background: linear-gradient(160deg, #FF74A9, #E0417D); color: #fff; font-size: 16px; font-weight: 900;
+    box-shadow: 0 10px 22px -10px rgba(224,65,125,.8);
+  }
+  .nav .nav-add:hover { background: linear-gradient(160deg, #FF74A9, #E0417D); color: #fff; filter: brightness(1.06); }
+  .fab { display: none; }
+
+  .topbar { max-width: 1200px; margin: 0 auto; padding: 26px 36px 10px; }
+  .topbar .logo { display: none; }
+  .topbar h1 { font-size: 30px; }
+  .page, .page.today, .page.calendar { max-width: 1200px; margin: 0 auto; padding: 8px 36px 48px; }
+
+  /* Две колонки: основное и сбоку */
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 28px; align-items: start; }
+  .col-side { position: sticky; top: 20px; max-height: calc(100dvh - 40px); overflow-y: auto; padding: 2px; scrollbar-width: thin; }
+  .col-side > .section-title:first-child, .col-side > .exam-strip:first-child + .section-title { margin-top: 6px; }
+  .col-side .exam-strip { flex-wrap: wrap; overflow: visible; margin: 0 0 6px; padding: 0; }
+  .col-side .exam-chip { flex: 1 1 150px; max-width: none; }
+  .side-calm { display: block; padding: 20px; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); font-weight: 900; }
+  .side-calm small { display: block; margin-top: 4px; font-weight: 700; color: var(--muted); }
+
+  /* Месяц на всю ширину, дела прямо в клетках */
+  .page.calendar > .seg { max-width: 420px; }
+  .cols.cal { grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; }
+  .cal .month { padding: 12px; }
+  .cal .ws-head { padding: 0 4px 10px; font-size: 18px; }
+  .cal .m-grid { gap: 4px; }
+  .cal .m-wd { font-size: 12px; padding-bottom: 6px; }
+  .cal .m-day { align-items: stretch; gap: 3px; min-height: 96px; padding: 6px; border-radius: 14px; background: var(--bg); overflow: hidden; }
+  .cal .m-day b { width: 28px; height: 28px; font-size: 14px; flex: none; }
+  .cal .m-day.out { opacity: .4; }
+  .cal .m-day.on { background: var(--pink-soft); box-shadow: inset 0 0 0 2px var(--pink); }
+  .cal .m-day.exam::after { top: 6px; right: 7px; font-size: 13px; }
+  .cal .m-day.break { background: color-mix(in srgb, #26C6DA 14%, var(--bg)); }
+  .cal .m-day:not(.on):hover { box-shadow: inset 0 0 0 2px var(--line); }
+  .cal .m-lessons { left: 8px; bottom: 6px; }
+  .m-items { display: flex; flex-direction: column; gap: 2px; min-width: 0; text-align: left; }
+  .m-items i {
+    font-style: normal; font-size: 11.5px; font-weight: 800; line-height: 1.25;
+    overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    padding: 1px 6px; border-radius: 6px;
+    background: color-mix(in srgb, var(--c) 18%, var(--surface)); color: color-mix(in srgb, var(--c) 65%, var(--text));
+  }
+  .m-items small { font-size: 11px; font-weight: 800; color: var(--muted); padding-left: 6px; }
+  .cal .col-side > .section-title:first-child { margin-top: 4px; }
+  .agenda { max-width: 760px; }
+
+  /* Расписание: дни недели колонками */
+  .sched { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 22px; }
+  .page.study > .seg { max-width: 520px; }
+  .page.study > .set-group, .page.study > .exam-card, .page.study > .btn, .page.study > .items,
+  .page.study > .section-title, .page.study > .empty { max-width: 760px; }
+  .page.settings > * { max-width: 760px; }
+
+  /* Шторки — окном по центру */
+  .overlay { align-items: center; padding: 24px; }
+  .sheet { width: min(560px, 100%); max-height: calc(100dvh - 48px); border-radius: 28px; padding: 20px 22px 22px; animation: pop-in .18s ease-out; }
+  .sheet .grab { display: none; }
+  @keyframes pop-in { from { transform: scale(.96); opacity: 0; } }
+
+  #toast { left: calc(50% + 120px); bottom: 28px; }
+
+  /* Наведение мышью */
+  .lesson, .item, .exam-chip, .exam-card, .cl, .set-row, .chip, .add-row, .ws-day { transition: filter .12s, background .12s, transform .12s; }
+  .lesson:hover, .item:hover, .exam-card:hover, .cl:hover { filter: brightness(.98); box-shadow: 0 0 0 2px var(--line), var(--shadow-sm); }
+  .set-row:hover:not(div) { background: var(--surface-2); }
+  .ws-day:not(.on):hover { background: var(--surface-2); }
+  .add-row:hover { background: var(--surface-2); }
+  .icon-btn:hover { filter: brightness(.95); }
+}
+
+@media (min-width: 960px) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .lesson:hover, :root:not([data-theme="light"]) .item:hover { filter: brightness(1.12); }
+}
+@media (min-width: 960px) {
+  :root[data-theme="dark"] .lesson:hover, :root[data-theme="dark"] .item:hover { filter: brightness(1.12); }
+}
+
+@media (min-width: 1300px) {
+  .sched { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+}
